@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.env.production
+/settings.local.json
+deploy/secrets/*
+!deploy/secrets/*.example
+/bin/
+/coverage.out
+/var/
+node_modules/
+dist/

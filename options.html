@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>Source Inspect 设置</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1a1a1a;
+        --muted: #6a6a6a;
+        --bg: #fff;
+        --surface: #f6f6f6;
+        --border: #e0e0e0;
+        --link: #0969da;
+        --danger: #cf222e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e6e6e6;
+          --muted: #8b949e;
+          --bg: #1c1c1c;
+          --surface: #262626;
+          --border: #3a3a3a;
+          --link: #58a6ff;
+          --danger: #f85149;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        font: 14px/1.7 system-ui, -apple-system, 'PingFang SC', sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      main { max-width: 760px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 32px 0 8px; }
+      p.hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        background: var(--surface);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      select, input[type='text'] {
+        font: inherit;
+        font-size: 13px;
+        padding: 6px 10px;
+        color: var(--fg);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        box-sizing: border-box;
+      }
+      input[type='text'] { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      button {
+        font: inherit;
+        font-size: 13px;
+        padding: 6px 14px;
+        color: var(--fg);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:hover { border-color: var(--link); color: var(--link); }
+      button.link-danger {
+        border: none;
+        background: none;
+        color: var(--danger);
+        padding: 2px 6px;
+      }
+      button.link-danger:hover { text-decoration: underline; color: var(--danger); }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        text-align: left;
+        padding: 8px 10px 8px 0;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+      th { font-size: 12px; color: var(--muted); font-weight: 500; }
+      td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+      td.actions { text-align: right; white-space: nowrap; }
+      .add-row { display: flex; gap: 8px; margin-top: 12px; }
+      .add-row input:nth-child(1) { flex: 0 0 240px; }
+      .add-row input:nth-child(2) { flex: 1 1 auto; }
+      .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+      #saved {
+        color: #1a7f37;
+        font-size: 13px;
+        margin-left: 10px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      #saved.show { opacity: 1; }
+      @media (prefers-color-scheme: dark) { #saved { color: #3fb950; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Source Inspect 设置</h1>
+      <p class="hint">在 localhost 页面上按住 Alt 移动鼠标查看定位，Alt+点击固定卡片，点卡片上的蓝色位置跳转编辑器。</p>
+
+      <h2>编辑器<span id="saved">已保存</span></h2>
+      <p class="hint">点击位置链接时用哪个编辑器打开。用的是编辑器自带的 URL scheme，不需要装编辑器插件。</p>
+      <select id="editor"></select>
+
+      <h2>项目根目录</h2>
+      <p class="hint">
+        sourcemap 只给得出行列和文件名，给不出磁盘路径，所以需要按站点配一次项目根。
+        大多数情况下能自动推断出来（编译产物里带 <code>fileName</code> 字面量、或 <code>sources</code>
+        本身是绝对路径），推断不出来时才需要在这里配。也可以直接在页面卡片上点「设置」。
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40%">站点 origin</th>
+            <th>项目根目录</th>
+            <th style="width: 60px"></th>
+          </tr>
+        </thead>
+        <tbody id="roots"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>还没有配置任何站点。</div>
+      <div class="add-row">
+        <input type="text" id="new-origin" placeholder="http://localhost:3000" />
+        <input type="text" id="new-root" placeholder="/Users/你/项目目录" />
+        <button id="add">添加</button>
+      </div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
