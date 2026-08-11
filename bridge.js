@@ -1,15 +1,17 @@
-// isolated world 的桥。
+// Bridge for the isolated world.
 //
-// 为什么需要它：探针必须跑在 MAIN world（isolated world 读不到 DOM 节点上的 __reactFiber$
-// expando），但 MAIN world 拿不到 chrome.* API。所以配置的读写由这个脚本代理，
-// 两边用 window.postMessage 通信（跨 world 有结构化克隆，比 CustomEvent.detail 可靠）。
+// The probe must run in the MAIN world because the isolated world cannot read DOM
+// __reactFiber$ expandos, while the MAIN world cannot access the chrome.* API.
+// This script proxies configuration reads and writes via window.postMessage, whose
+// cross-world structured cloning is more reliable than CustomEvent.detail.
 //
-// 用 storage.local 而不是 sync：配的是磁盘绝对路径，跨设备同步只会带来错的路径。
+// Use storage.local rather than sync: configured absolute disk paths would be wrong
+// when synchronized across devices.
 
 const MSG_NS = "source-inspect";
 const DEFAULTS = { editor: "vscode", roots: {} };
 
-/** 存的是 origin → 项目根 的映射；返回给页面时只挑当前 origin 那一条 */
+/** Stores an origin-to-project-root map; only returns the entry for this origin. */
 async function readConfigForThisOrigin() {
   const stored = await chrome.storage.local.get(DEFAULTS);
   const roots = stored.roots || {};
@@ -31,12 +33,12 @@ async function handle(action, payload) {
   if (action === "set-project-root") {
     const { roots = {} } = await chrome.storage.local.get({ roots: {} });
     if (payload.projectRoot) roots[location.origin] = payload.projectRoot;
-    else delete roots[location.origin]; // 传空值表示清除本 origin 的配置
+    else delete roots[location.origin]; // An empty value clears this origin's configuration.
     await chrome.storage.local.set({ roots });
     return { ok: true };
   }
 
-  throw new Error(`未知的 action: ${action}`);
+  throw new Error(`Unknown action: ${action}`);
 }
 
 window.addEventListener("message", (event) => {
@@ -58,7 +60,7 @@ window.addEventListener("message", (event) => {
   );
 });
 
-// options 页改了配置就主动推给 MAIN world，不用等下次请求
+// Push option-page changes to the MAIN world instead of waiting for its next request.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   readConfigForThisOrigin().then((config) => {

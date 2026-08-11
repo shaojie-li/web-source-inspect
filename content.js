@@ -1,16 +1,16 @@
-// 可行性探针：只回答一个问题 —— 从一个 DOM 节点出发，React 到底愿意告诉我们多少源码信息。
-// 不做 sourcemap，不做编辑器跳转。Alt+hover 高亮，Alt+click 探测并打印。
+// Feasibility probe: starting from a DOM node, discover how much source information React exposes.
+// It does not resolve source maps or open editors. Alt+hover highlights; Alt+click inspects and logs.
 //
-// 已验证的两条路径（见 README）：
-//   React <=18: fiber._debugSource 直接给出 file:line:col，不需要 sourcemap
-//   React 19  : _debugSource 被移除，改用 fiber._debugStack（一个 Error），
-//               栈里第一个「用户代码帧」就是创建该元素的 JSX 调用点（bundle 位置），需 sourcemap 还原
+// Two verified paths (see README):
+//   React <=18: fiber._debugSource provides file:line:column directly, with no source map required.
+//   React 19: _debugSource was removed; use fiber._debugStack (an Error). Its first user-code
+//   frame is the JSX call site that created the element, at a bundle location that needs a source map.
 
-// ---------- 配置：编辑器 + 项目根 ----------
-// 真实存储在 chrome.storage.local，由 isolated world 的 bridge.js 代理 —— MAIN world 拿不到
-// chrome.* API，而探针又必须待在 MAIN world（isolated world 读不到 DOM 上的 __reactFiber$）。
-// 这里保留一份内存缓存，让 getEditor / getConfiguredRoot 能同步读：它们在 hover 热路径上。
-// bridge 不可用时（没装 bridge.js、storage 出错）退回页面 localStorage，功能不至于全丢。
+// ---------- Configuration: editor + project root ----------
+// The authoritative data is in chrome.storage.local and proxied by bridge.js because the MAIN world
+// cannot access chrome.* APIs, while the probe must run there to read DOM __reactFiber$ expandos.
+// Keep an in-memory cache for synchronous getEditor/getConfiguredRoot reads on the hover hot path.
+// If the bridge is unavailable (missing bridge.js or storage failure), fall back to page localStorage.
 
 const MSG_NS = "source-inspect";
 const LS_EDITOR_KEY = "__source_inspect_editor";
@@ -31,7 +31,7 @@ function lsRead(key) {
   try {
     return localStorage.getItem(key) || "";
   } catch {
-    return ""; // 某些页面禁用了 localStorage
+    return ""; // Some pages disable localStorage.
   }
 }
 
@@ -40,11 +40,11 @@ function lsWrite(key, value) {
     if (value) localStorage.setItem(key, value);
     else localStorage.removeItem(key);
   } catch (e) {
-    console.warn("[source-inspect] 写 localStorage 失败:", e.message);
+    console.warn("[source-inspect] Failed to write localStorage:", e.message);
   }
 }
 
-// 先吃 localStorage 里的值，让功能在 bridge 应答前就可用（也兼容早期版本存的数据）
+// Read localStorage first so the feature works before the bridge replies and with data from earlier versions.
 config.editor = lsRead(LS_EDITOR_KEY) || DEFAULT_EDITOR;
 config.projectRoot = lsRead(LS_ROOT_KEY);
 
@@ -76,7 +76,7 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  // options 页改了配置，bridge 主动推过来；卡片开着就就地重算一次
+  // The options page pushes changes through the bridge; rerender an open card in place.
   if (msg.dir === "push" && msg.action === "config-changed" && msg.data) {
     applyConfig(msg.data, "chrome.storage");
     if (lastCard && card.style.display !== "none")
@@ -88,7 +88,7 @@ function askBridge(action, payload, timeoutMs = 2000) {
   return new Promise((resolve) => {
     const id = ++requestSeq;
     const timer = setTimeout(() => {
-      if (pendingRequests.delete(id)) resolve(null); // bridge.js 没装或没响应
+      if (pendingRequests.delete(id)) resolve(null); // bridge.js is missing or did not respond.
     }, timeoutMs);
     pendingRequests.set(id, { resolve, timer });
     window.postMessage(
@@ -101,7 +101,7 @@ function askBridge(action, payload, timeoutMs = 2000) {
 askBridge("get-config").then((data) => {
   if (!data) {
     console.warn(
-      "[source-inspect] bridge.js 未响应，配置退回页面 localStorage（重装插件可恢复）",
+      "[source-inspect] bridge.js did not respond; falling back to page localStorage (reinstall the extension to restore it)",
     );
     return;
   }
@@ -119,7 +119,7 @@ function getConfiguredRoot() {
   return config.projectRoot || null;
 }
 
-/** 两处都写：chrome.storage 是正本（跨 origin 可用），localStorage 是 bridge 挂掉时的兜底 */
+/** Write both stores: chrome.storage is authoritative across origins; localStorage is a bridge fallback. */
 function setEditor(id) {
   config.editor = id;
   lsWrite(LS_EDITOR_KEY, id);
@@ -135,7 +135,7 @@ function setProjectRoot(root) {
 const FIBER_KEYS = ["__reactFiber$", "__reactInternalInstance$"];
 const PROPS_KEYS = ["__reactProps$", "__reactEventHandlers$"];
 
-/** 找到 DOM 节点上 React 挂的 fiber。找不到说明这个节点不由 React 渲染（或是 production build）。 */
+/** Find the React Fiber attached to a DOM node. No Fiber means it is not React-rendered or is a production build. */
 function findFiber(dom) {
   for (const key in dom) {
     for (const prefix of FIBER_KEYS) {
@@ -146,8 +146,8 @@ function findFiber(dom) {
 }
 
 /**
- * 点击目标可能是原生 DOM（innerHTML 插入、第三方库、Portal 内容），身上没有 fiber。
- * 这时不该直接失败 —— 往上找最近的 React 祖先，定位到"渲染它的容器"仍然有用。
+ * The clicked target may be native DOM inserted through innerHTML, a third-party library, or a Portal,
+ * and therefore have no Fiber. Search upward for the nearest React ancestor; its rendering container is useful.
  */
 function findFiberFromDomOrAncestor(dom) {
   let node = dom;
@@ -170,7 +170,7 @@ function findProps(dom) {
   return null;
 }
 
-/** fiber.type 可能是字符串（'div'）、函数组件、class、或 memo/forwardRef 包装对象 */
+/** fiber.type can be a string ('div'), function component, class, or memo/forwardRef wrapper. */
 function typeName(type) {
   if (!type) return null;
   if (typeof type === "string") return type;
@@ -184,11 +184,11 @@ function typeName(type) {
   return String(type);
 }
 
-// ---------- React 19：从 _debugStack 里挖出 JSX 调用点 ----------
+// ---------- React 19: extract the JSX call site from _debugStack ----------
 
 const FRAME_RE = /at\s+(?:async\s+)?(?:(.+?)\s+\()?(\S+?):(\d+):(\d+)\)?$/;
 
-/** 框架自身的帧不是我们要的目标，跳过 */
+/** Skip framework frames; they are not the target. */
 function isFrameworkFrame(url) {
   return /\/node_modules\/|jsx-dev-runtime|react-dom|\breact\.development\b|\/@react-refresh|\/@vite\/|esm\.sh/.test(
     url,
@@ -212,12 +212,12 @@ function parseDebugStack(fiber) {
       column: +m[4],
     });
   }
-  // 第一个非框架帧 = 写下这个 JSX 元素的那一行（在编译产物中的位置）
+  // The first non-framework frame is the line that created this JSX element in compiled output.
   const jsxCallSite = frames.find((f) => !isFrameworkFrame(f.url)) || null;
   return { jsxCallSite, allFrames: frames };
 }
 
-/** 沿 fiber.return 向上走，记录每一层能拿到什么 */
+/** Walk fiber.return upward and record the data available at each level. */
 function walkUp(startFiber, limit = 30) {
   const chain = [];
   let fiber = startFiber;
@@ -226,7 +226,7 @@ function walkUp(startFiber, limit = 30) {
     chain.push({
       tag: fiber.tag,
       name: typeName(fiber.type),
-      // React <=18 路径
+      // React <=18 path
       debugSource: fiber._debugSource
         ? {
             fileName: fiber._debugSource.fileName,
@@ -234,7 +234,7 @@ function walkUp(startFiber, limit = 30) {
             column: fiber._debugSource.columnNumber ?? null,
           }
         : null,
-      // React 19 路径
+      // React 19 path
       jsxCallSite: stack ? stack.jsxCallSite : null,
       stackFrames: stack ? stack.allFrames : null,
       debugOwner: fiber._debugOwner ? typeName(fiber._debugOwner.type) : null,
@@ -245,9 +245,9 @@ function walkUp(startFiber, limit = 30) {
   return chain;
 }
 
-// React WorkTag 里属于"组件"的那几种：函数 / class / forwardRef / memo / 简单 memo。
-// 不能用"名字首字母大写"来判断 —— forwardRef(X)、memo(X) 这类包装名是小写开头会被漏掉，
-// 而 Fragment / Suspense / Provider 的 type 是 symbol，按名字判断又会漏进来。
+// Component React WorkTags: function, class, forwardRef, memo, and simple memo.
+// Name capitalization misses lowercased forwardRef(X) and memo(X) wrappers, while name checks also admit
+// Fragment, Suspense, and Provider because their types are symbols.
 const COMPONENT_TAGS = new Set([0, 1, 11, 14, 15]);
 
 function detectReactVersion() {
@@ -262,8 +262,8 @@ function detectReactVersion() {
   return null;
 }
 
-// ---------- sourcemap 还原：bundle 位置 → 源码行列 ----------
-// 纯 JS 手写 VLQ 解码，不引依赖，MV3 下无 wasm/CSP 问题。
+// ---------- Source-map resolution: bundle location → source line and column ----------
+// Hand-written VLQ decoding in plain JS avoids dependencies and MV3 WASM/CSP issues.
 
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const B64_IDX = {};
@@ -290,7 +290,7 @@ function decodeVLQ(str) {
   return out;
 }
 
-/** mappings 字符串 → 按 generated 行分组的 segment 列表（全部 0-based） */
+/** Mapping string → segments grouped by generated line (all 0-based). */
 function parseMappings(mappings) {
   const lines = [];
   let srcIdx = 0;
@@ -320,7 +320,7 @@ function parseMappings(mappings) {
   return lines;
 }
 
-/** 1-based 的 generated (line, col) → 源码 1-based 位置。取该行中最后一个 genCol <= 目标列的 segment。 */
+/** 1-based generated (line, col) → 1-based source position using the last segment whose genCol is not greater than the target. */
 function originalPositionFor(parsed, map, line1, col1) {
   const segs = parsed[line1 - 1];
   if (!segs || !segs.length) return null;
@@ -339,7 +339,7 @@ function originalPositionFor(parsed, map, line1, col1) {
   };
 }
 
-/** base64 → 字符串。必须走 TextDecoder，直接 atob 会把 sourcesContent 里的非 ASCII 弄成乱码。 */
+/** base64 → string. TextDecoder is required because direct atob corrupts non-ASCII sourcesContent. */
 function decodeBase64Utf8(b64) {
   const bin = atob(b64);
   const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
@@ -351,9 +351,9 @@ const basename = (p) => String(p).split(/[\\/]/).pop();
 const INLINE_MAP_RE =
   /sourceMappingURL=data:application\/json;(?:charset=[^;]+;)?base64,([A-Za-z0-9+/=]+)/;
 const EXTERNAL_MAP_RE = /\/\/[#@]\s*sourceMappingURL=(?!data:)(\S+)/;
-// @vitejs/plugin-react v5 及以前会注入 __source 字面量，fileName 是完整绝对磁盘路径 ——
-// React 19 runtime 虽然把这个参数丢了，但它还在编译产物文本里，是零配置拿绝对路径的来源。
-// v6 起不再注入（React 19 反正不读），SWC 版插件也不注入，所以这条只是运气好时的快捷路径。
+// @vitejs/plugin-react v5 and earlier inject a __source literal whose fileName is an absolute disk path.
+// React 19 discards the parameter at runtime, but it remains in compiled output and enables zero-config paths.
+// v6 and the SWC plugin do not inject it, so this is only an opportunistic fast path.
 const FILENAME_LITERAL_RE = /fileName:\s*"((?:[^"\\]|\\.)*)"/;
 
 const moduleCache = new Map();
@@ -362,7 +362,7 @@ async function loadModuleMap(url) {
   if (moduleCache.has(url)) return moduleCache.get(url);
   const promise = (async () => {
     const res = await fetch(url, { credentials: "omit" });
-    if (!res.ok) throw new Error(`拉取模块失败 ${res.status}: ${url}`);
+    if (!res.ok) throw new Error(`Failed to fetch module (${res.status}): ${url}`);
     const text = await res.text();
 
     let rawMap;
@@ -371,11 +371,11 @@ async function loadModuleMap(url) {
       rawMap = JSON.parse(decodeBase64Utf8(inline[1]));
     } else {
       const external = EXTERNAL_MAP_RE.exec(text);
-      if (!external) throw new Error(`模块没有 sourcemap: ${url}`);
+      if (!external) throw new Error(`Module has no source map: ${url}`);
       const mapRes = await fetch(new URL(external[1], url).href, {
         credentials: "omit",
       });
-      if (!mapRes.ok) throw new Error(`拉取 .map 失败 ${mapRes.status}`);
+      if (!mapRes.ok) throw new Error(`Failed to fetch .map (${mapRes.status})`);
       rawMap = await mapRes.json();
     }
 
@@ -383,7 +383,7 @@ async function loadModuleMap(url) {
     return {
       map: rawMap,
       parsed: parseMappings(rawMap.mappings),
-      // 只有 babel 版 @vitejs/plugin-react 会注入这个；SWC / Next.js 链路上是 null
+      // Only the Babel variant of @vitejs/plugin-react injects this; it is null for SWC and Next.js.
       fileNameLiteral: fileNameHit ? fileNameHit[1] : null,
     };
   })();
@@ -391,9 +391,9 @@ async function loadModuleMap(url) {
   return promise;
 }
 
-// ---------- 磁盘绝对路径推断 ----------
+// ---------- Absolute disk-path inference ----------
 
-/** 剥掉各家工具链给 sources 加的前缀，得到相对项目根的路径 */
+/** Remove toolchain prefixes from sources to obtain a project-root-relative path. */
 function normalizeSourcePath(source) {
   return source
     .replace(/^webpack:\/\/\/?/, "") // webpack:///./src/x.tsx
@@ -403,22 +403,21 @@ function normalizeSourcePath(source) {
 }
 
 /**
- * 判断一个候选值是不是真的磁盘绝对路径。
- * 光看开头的 "/" 不够 —— Vite 的 sources 是 "/src/App.tsx" 这种 URL 风格路径，不是磁盘路径。
- * 强信号：磁盘路径应当以模块 URL 的 pathname 结尾，且前面还多出一段（那段就是项目根）。
+ * Determine whether a candidate is truly an absolute disk path.
+ * A leading slash is insufficient: Vite sources can be URL-style paths such as /src/App.tsx.
+ * A strong signal is that the path ends in the module URL pathname and has an additional project-root prefix.
  */
 function looksLikeDiskPath(candidate, moduleUrl) {
-  if (/^[A-Za-z]:[\\/]/.test(candidate)) return true; // Windows 盘符
+  if (/^[A-Za-z]:[\\/]/.test(candidate)) return true; // Windows drive letter
   if (!candidate.startsWith("/")) return false;
   const urlPath = new URL(moduleUrl).pathname;
   return candidate.endsWith(urlPath) && candidate.length > urlPath.length;
 }
 
 /**
- * Vite dev 是一模块一 URL，所以模块 URL 的 pathname 就是相对项目根的完整路径。
- * 这比 sourcemap 的 sources 可靠得多 —— sources 常常只有裸文件名（"index.tsx"），
- * 而一个项目里可能有上百个同名文件，拼出来必然是错的。
- * /@fs/ 开头的模块（monorepo 外部文件、link 的包）后面直接跟绝对路径，连项目根都不用配。
+ * Vite dev serves one module per URL, so its pathname is the full path relative to the project root.
+ * This is more reliable than source-map sources, which are often bare names such as index.tsx and may repeat.
+ * Modules beginning with /@fs/ point directly to absolute paths for external monorepo files and linked packages.
  */
 function pathFromModuleUrl(moduleUrl, root) {
   const pathname = new URL(moduleUrl).pathname;
@@ -427,15 +426,15 @@ function pathFromModuleUrl(moduleUrl, root) {
   return root.replace(/\/+$/, "") + pathname;
 }
 
-/** 从最可靠到最将就，逐级尝试推出绝对路径 */
+/** Infer an absolute path from the most reliable source to the least. */
 function inferAbsPath({ fileNameLiteral, map, source, moduleUrl }) {
   const fromFs = pathFromModuleUrl(moduleUrl, null);
-  if (fromFs) return { path: fromFs, via: "Vite /@fs/ 前缀" };
+  if (fromFs) return { path: fromFs, via: "Vite /@fs/ prefix" };
 
-  if (fileNameLiteral) return { path: fileNameLiteral, via: "fileName 字面量" };
+  if (fileNameLiteral) return { path: fileNameLiteral, via: "fileName literal" };
 
   if (source && looksLikeDiskPath(source, moduleUrl)) {
-    return { path: source, via: "sourcemap sources（本身是绝对路径）" };
+    return { path: source, via: "source-map sources (already absolute)" };
   }
 
   if (map.sourceRoot && source) {
@@ -450,21 +449,21 @@ function inferAbsPath({ fileNameLiteral, map, source, moduleUrl }) {
   if (!root) return null;
 
   const fromUrl = pathFromModuleUrl(moduleUrl, root);
-  // basename 一致才敢用 URL 路径：不一致说明这个 URL 是多文件 bundle（webpack 那种），
-  // 它的 pathname 和源文件没有对应关系。
+  // Use the URL path only when basenames match. A mismatch means a multi-file bundle such as Webpack,
+  // whose pathname has no correspondence to the source file.
   if (fromUrl && (!source || basename(fromUrl) === basename(source))) {
-    return { path: fromUrl, via: "项目根 + 模块 URL 路径" };
+    return { path: fromUrl, via: "project root + module URL path" };
   }
   if (source) {
     return {
       path: root.replace(/\/+$/, "") + "/" + normalizeSourcePath(source),
-      via: "项目根 + sources",
+      via: "project root + sources",
     };
   }
   return null;
 }
 
-/** 把 _debugStack 拿到的 bundle 位置还原成 { absPath, line, column } */
+/** Resolve a bundle location from _debugStack to { absPath, line, column }. */
 async function resolveToSource(callSite) {
   const entry = await loadModuleMap(callSite.url);
   const pos = originalPositionFor(
@@ -475,7 +474,7 @@ async function resolveToSource(callSite) {
   );
   if (!pos)
     throw new Error(
-      `sourcemap 里没有 ${callSite.line}:${callSite.column} 的映射`,
+      `Source map has no mapping for ${callSite.line}:${callSite.column}`,
     );
 
   const inferred = inferAbsPath({
@@ -485,18 +484,18 @@ async function resolveToSource(callSite) {
     moduleUrl: callSite.url,
   });
   if (!inferred) {
-    // 区分"根本没配根"和"配了根但依然推不出"，否则看到同一句话没法判断下一步做什么
+    // Distinguish a missing root from a configured root that still cannot infer a path.
     const root = getConfiguredRoot();
     const where = `${pos.source}:${pos.line}:${pos.column}`;
     const err = new Error(
       root
-        ? `源码位置是 ${where}，项目根已配为 ${root}，但仍推不出磁盘路径。` +
-            `模块 URL 是 ${callSite.url}，sourcemap 的 sources 是 ${JSON.stringify(pos.source)}。`
-        : `源码位置是 ${where}，但还没配项目根，推不出磁盘绝对路径。` +
-            `点卡片上的「设置」填一次即可（也可以在插件的选项页里统一管理各 origin 的项目根）。`,
+        ? `The source location is ${where}. Project root is ${root}, but an absolute disk path could not be inferred. ` +
+            `Module URL: ${callSite.url}; source-map source: ${JSON.stringify(pos.source)}.`
+        : `The source location is ${where}, but no project root is configured, so an absolute disk path cannot be inferred. ` +
+            `Select [Settings] on the card once, or manage project roots for all origins in the extension options.`,
     );
-    // 卡片位置有限，短文案上卡片，完整说明进 title
-    err.short = root ? `${where} — 配了根仍推不出` : `${where} — 未配置项目根`;
+    // Card space is limited: show a short message and keep the full explanation in the title.
+    err.short = root ? `${where} — path unavailable with configured root` : `${where} — project root not configured`;
     err.needsRoot = !root;
     throw err;
   }
@@ -509,17 +508,17 @@ async function resolveToSource(callSite) {
   };
 }
 
-// ---------- 跳编辑器 ----------
+// ---------- Open in editor ----------
 
-// scheme 是编辑器自带的，装了就能用，不需要装任何编辑器插件
+// The editor provides its own URL scheme, so no editor extension is needed.
 function openInEditor({ absPath, line, column, via }) {
   const editor = getEditor();
   const url = `${editor.scheme}://file/${encodeURI(absPath)}:${line}:${column}`;
   console.log(
-    "%c[source-inspect] 打开:",
+    "%c[source-inspect] Opening:",
     "color:#4f9cff",
     url,
-    via ? `（路径来源: ${via}）` : "",
+    via ? `(path source: ${via})` : "",
   );
   window.location.href = url;
 }
@@ -529,7 +528,7 @@ function probe(dom) {
   if (!fiber) {
     return {
       ok: false,
-      reason: "整条祖先链上都没有 React fiber（页面不是 React 渲染的）",
+      reason: "No React Fiber exists anywhere in the ancestor chain (the page is not React-rendered)",
     };
   }
 
@@ -556,19 +555,19 @@ function probe(dom) {
     reactVersion: detectReactVersion(),
     route,
     target,
-    // hops > 0 说明点击目标本身没有 fiber，结果来自第 hops 层祖先
+    // hops > 0 means the clicked target has no Fiber; the result comes from that ancestor level.
     ancestorHops: hops,
     ancestorNode: hops > 0 ? node : null,
-    // 供 sourcemap 还原用的原始数据
+    // Raw data used for source-map resolution.
     callSite: hitCallSite ? hitCallSite.jsxCallSite : null,
     debugSourceRaw: hitSource ? hitSource.debugSource : null,
     strategy: {
       debugSource:
-        "_debugSource 可用（React ≤18）：已是源码行列，直接可跳，不需要 sourcemap",
+        "_debugSource is available (React ≤18): it already contains source coordinates and needs no source map",
       debugStack:
-        "_debugStack 可用（React 19）：拿到的是编译产物位置，需要 sourcemap 还原成源码行列",
-      // production build 下 fiber 仍然存在，但所有 _debug* 字段被剥离，实测组件名也被压缩成 v1 之类
-      none: "两条 _debug 路径都拿不到 —— 最常见原因是 production build（fiber 在，调试字段被剥离）",
+        "_debugStack is available (React 19): it contains a compiled location that needs source-map resolution",
+      // Production builds retain Fiber but strip all _debug* fields; component names may also be minified.
+      none: "Neither _debug path is available — the most common cause is a production build with debug fields stripped",
     }[route],
     owner: (hitSource || hitCallSite || {}).name ?? null,
     componentChain: chain
@@ -579,7 +578,7 @@ function probe(dom) {
   };
 }
 
-// ---------- 交互层：Alt+hover 高亮，Alt+click 打印 ----------
+// ---------- Interaction layer: Alt+hover highlights, Alt+click logs ----------
 
 const overlay = document.createElement("div");
 Object.assign(overlay.style, {
@@ -602,11 +601,11 @@ Object.assign(label.style, {
   color: "#d4d4d4",
   padding: "4px 8px",
   borderRadius: "4px",
-  // width: max-content 是关键 —— 没有它，fixed 元素靠近右边界时可用宽度不足，
-  // 会被压成一条竖着排字的窄条（而不是溢出），测量也会测到错误的宽度
+  // width: max-content is essential. Without it, a fixed element near the right edge gets compressed
+  // into a narrow vertical column instead of overflowing, and its measured width is wrong.
   width: "max-content",
   maxWidth: "460px",
-  // 显式声明，不能指望目标页面有 CSS reset：content-box 下 padding 会加到 maxWidth 之外
+  // Declare this explicitly: the target page may lack a CSS reset, and content-box adds padding beyond maxWidth.
   boxSizing: "border-box",
   whiteSpace: "pre-wrap",
   wordBreak: "break-all",
@@ -614,7 +613,7 @@ Object.assign(label.style, {
   boxShadow: "0 2px 12px rgba(0,0,0,.4)",
 });
 
-// Alt+点击后固定下来的高亮框，和 hover 的 overlay 分开，这样鼠标移开它也不消失
+// The highlight pinned by Alt+click is separate from the hover overlay so it survives pointer movement.
 const pinBox = document.createElement("div");
 Object.assign(pinBox.style, {
   position: "fixed",
@@ -640,16 +639,16 @@ Object.assign(card.style, {
   padding: "10px 12px",
   minWidth: "300px",
   maxWidth: "560px",
-  boxSizing: "border-box", // 同上：长类名换行时 padding+border 不能把卡片撑出 maxWidth
+  boxSizing: "border-box", // Long class names may wrap, but padding and border must not exceed maxWidth.
   display: "none",
   boxShadow: "0 6px 24px rgba(0,0,0,.5)",
-  pointerEvents: "auto", // 卡片要能点，和 overlay/label 不同
+  pointerEvents: "auto", // The card must be interactive, unlike the overlay and label.
 });
 
 document.documentElement.append(overlay, label, pinBox, card);
 
 let current = null;
-let hintToken = 0; // 防止慢的 sourcemap 结果覆盖掉新的 hover
+let hintToken = 0; // Prevent a slow source-map result from overwriting a newer hover.
 
 function hideHint() {
   overlay.style.display = "none";
@@ -658,9 +657,9 @@ function hideHint() {
 }
 
 /**
- * 纯几何计算：在目标矩形旁边找一个放浮层的位置。两条硬要求 —— 不遮挡目标、不超出视口。
- * 依次试 上 / 下 / 右 / 左，取第一个同时满足两条的。抽成纯函数是为了能单测边界情况。
- * 见 test/placement.test.mjs（改这里要同步那边）。
+ * Pure geometry: place an overlay beside the target rectangle without overlapping it or leaving the viewport.
+ * Try above, below, right, then left and take the first valid candidate. This is pure for boundary testing.
+ * Keep this in sync with test/placement.test.mjs.
  */
 function computePlacement({
   w,
@@ -690,13 +689,13 @@ function computePlacement({
   };
 
   const candidates = [];
-  // 上下方向：水平跟随目标左边缘并夹进视口；垂直已经错开，所以不会重叠
+  // Vertical positions follow the target's left edge and clamp horizontally; their vertical offset prevents overlap.
   const vertical = (top) =>
     candidates.push({
       left: clamp(rect.left, M, Math.max(M, vw - w - M)),
       top,
     });
-  // 左右方向：垂直跟随目标上边缘并夹进视口
+  // Horizontal positions follow the target's top edge and clamp vertically.
   const horizontal = (left) =>
     candidates.push({ left, top: clamp(rect.top, M, Math.max(M, vh - h - M)) });
 
@@ -715,15 +714,15 @@ function computePlacement({
   );
   if (pick) return pick;
 
-  // 目标几乎占满视口，四周都躲不开：优先保证浮层完整可见，在左上/右下里选重叠更小的
+  // If the target nearly fills the viewport, keep the overlay fully visible and choose the lesser overlap at top-left or bottom-right.
   const tl = { left: M, top: M };
   const br = { left: Math.max(M, vw - w - M), top: Math.max(M, vh - h - M) };
   return overlapArea(tl.left, tl.top) <= overlapArea(br.left, br.top) ? tl : br;
 }
 
 /**
- * 必须先移到 (0,0) 再测量 —— fixed 元素直接设一个靠右的 left，可用宽度就不够了，
- * 内容会被压成竖排窄条，此时量到的 offsetWidth 也是错的。
+ * Measure at (0,0) first. Setting a fixed element near the right edge restricts its available width,
+ * compresses its content into a narrow vertical column, and makes offsetWidth inaccurate.
  */
 function placeNear(el, rect, prefer = "above") {
   el.style.display = "block";
@@ -744,7 +743,7 @@ function placeNear(el, rect, prefer = "above") {
 function showHint(dom) {
   const r = probe(dom);
 
-  // 回退到祖先时，高亮框画在真正命中的那个节点上，避免用户误以为定位的是自己点的元素
+  // When falling back to an ancestor, highlight the actual matched node to avoid implying the clicked element was resolved.
   const highlighted = r.ancestorNode || dom;
   const rect = highlighted.getBoundingClientRect();
   Object.assign(overlay.style, {
@@ -758,27 +757,27 @@ function showHint(dom) {
 
   const via =
     r.ok && r.ancestorHops > 0
-      ? `（无 fiber，取上 ${r.ancestorHops} 层祖先）\n`
+      ? `(no Fiber; using ancestor ${r.ancestorHops} level(s) up)\n`
       : "";
-  // 文本变化会改变尺寸，异步结果回来后必须重新定位，否则可能溢出视口
+  // Text changes affect size, so reposition after async results to prevent viewport overflow.
   const place = () => placeNear(label, rect, "above");
 
   if (!r.ok) {
     label.textContent = `✗ ${r.reason}`;
   } else if (r.route === "debugSource") {
-    // React <=18：fiber 上已是源码位置，无需还原
+    // React <=18: Fiber already contains the source location.
     const s = r.debugSourceRaw;
     label.textContent = `${via}✓ ${basename(s.fileName)}:${s.line}:${s.column ?? 1}   <${r.owner}>`;
   } else if (r.route === "debugStack") {
-    // React 19：先显示编译产物位置，sourcemap 是异步的，回来了再替换。
-    // hover 只给速览，完整绝对路径留给卡片 —— 塞进浮层会让它长到没法放。
+    // React 19: show the compiled location first, then replace it when the async source map resolves.
+    // Hover is a preview; reserve full absolute paths for the card so the overlay remains placeable.
     const token = ++hintToken;
     const cs = r.callSite;
-    label.textContent = `${via}◐ ${basename(new URL(cs.url).pathname)}:${cs.line}:${cs.column} 解析中…`;
+    label.textContent = `${via}◐ ${basename(new URL(cs.url).pathname)}:${cs.line}:${cs.column} Resolving…`;
     place();
     resolveToSource(cs).then(
       (pos) => {
-        if (token !== hintToken) return; // 鼠标已经移到别处，丢弃过期结果
+        if (token !== hintToken) return; // The pointer moved elsewhere; discard this stale result.
         label.textContent = `${via}✓ ${basename(pos.source)}:${pos.line}:${pos.column}   <${r.owner}>`;
         place();
       },
@@ -791,14 +790,14 @@ function showHint(dom) {
     current = dom;
     return;
   } else {
-    label.textContent = `${via}⚠ 无位置信息 | ${r.componentChain.slice(0, 3).reverse().join(" → ") || "组件链为空"}`;
+    label.textContent = `${via}⚠ No location information | ${r.componentChain.slice(0, 3).reverse().join(" → ") || "empty component chain"}`;
   }
 
   place();
   current = dom;
 }
 
-// ---------- 固定卡片 ----------
+// ---------- Pinned card ----------
 
 function closeCard() {
   card.style.display = "none";
@@ -807,7 +806,7 @@ function closeCard() {
   lastCard = null;
 }
 
-/** 从 fiber 链里取出前 max 个带位置信息的层级：第 0 个是当前元素，往后是各级父级 */
+/** Collect the first max levels with location information from the Fiber chain; index 0 is the current element. */
 function collectPositions(chain, max) {
   const out = [];
   for (const node of chain) {
@@ -818,13 +817,13 @@ function collectPositions(chain, max) {
   return out;
 }
 
-/** 把一个 span 变成可点击的蓝色位置链接 */
+/** Turn a span into a clickable blue location link. */
 function setLink(el, text, target) {
   el.textContent = text;
   el.style.color = LINK_COLOR;
   el.style.cursor = "pointer";
   el.style.textDecoration = "none";
-  el.title = `${target.absPath}:${target.line}:${target.column}\n点击在编辑器中打开`;
+  el.title = `${target.absPath}:${target.line}:${target.column}\nClick to open in editor`;
   el.onmouseenter = () => (el.style.textDecoration = "underline");
   el.onmouseleave = () => (el.style.textDecoration = "none");
   el.onclick = (ev) => {
@@ -834,7 +833,7 @@ function setLink(el, text, target) {
   };
 }
 
-/** React ≤18 直接就有源码位置；React 19 要异步等 sourcemap 还原 */
+/** React ≤18 provides source locations directly; React 19 waits for asynchronous source-map resolution. */
 function fillPositionLink(el, entry) {
   if (entry.debugSource) {
     const s = entry.debugSource;
@@ -846,7 +845,7 @@ function fillPositionLink(el, entry) {
     );
     return;
   }
-  el.textContent = "解析 sourcemap…";
+  el.textContent = "Resolving source map…";
   el.style.color = "#7d8590";
   resolveToSource(entry.jsxCallSite).then(
     (pos) =>
@@ -854,7 +853,7 @@ function fillPositionLink(el, entry) {
     (err) => {
       el.textContent = `✗ ${err.short || err.message}`;
       el.style.color = "#f85149";
-      el.title = err.message; // 悬停看完整说明和修复命令
+      el.title = err.message; // Hover for the full explanation and remediation instructions.
     },
   );
 }
@@ -880,18 +879,17 @@ function row(labelText, valueNode, extra) {
 }
 
 /**
- * 位置行右边显示"这行 JSX 写在哪个组件的渲染函数里"（取自栈帧的函数名）。
- * 比显示 fiber 的 tagName 有信息量得多，更重要的是能解释一个看起来矛盾的现象：
- * 作为 children / props 传下去的元素，是在**父组件**里创建的，却挂在**子组件**的
- * fiber 子树上 —— 于是位置所属组件和组件链最内层不是同一个，两者都没错。
+ * The right side of a location row names the component render function that wrote the JSX, from the stack frame.
+ * This is more useful than a Fiber tag name and explains why an element passed as children or props can be created
+ * in a parent component but attached to a child Fiber subtree: the location owner and innermost chain component differ.
  */
 function describeNode(entry) {
   const fn = entry.jsxCallSite && entry.jsxCallSite.fn;
-  if (fn && fn !== "(anonymous)") return `写于 ${fn}`;
+  if (fn && fn !== "(anonymous)") return `written in ${fn}`;
   return `<${entry.name ?? "?"}>`;
 }
 
-/** 卡片上的编辑器选择器。位置链接跳转时读的就是这里的值 */
+/** Editor selector in the card. Location links use this value. */
 function editorRow() {
   const sel = document.createElement("select");
   Object.assign(sel.style, {
@@ -912,18 +910,18 @@ function editorRow() {
   sel.value = getEditor().id;
   sel.onchange = () => setEditor(sel.value);
   sel.onclick = (ev) => ev.stopPropagation();
-  return row("编辑器", sel);
+  return row("Editor", sel);
 }
 
-/** 卡片底部的项目根一行：随时能看到配没配、点一下就能改 */
+/** Project-root row at the bottom of the card; shows its state and allows one-click changes. */
 function rootConfigRow(onChanged) {
   const value = document.createElement("span");
   const root = getConfiguredRoot();
-  value.textContent = root || "(未配置)";
+  value.textContent = root || "(not configured)";
   value.style.color = root ? "#d4d4d4" : "#d29922";
 
   const action = document.createElement("span");
-  action.textContent = root ? "[修改]" : "[设置]";
+  action.textContent = root ? "[Edit]" : "[Settings]";
   Object.assign(action.style, {
     color: LINK_COLOR,
     cursor: "pointer",
@@ -932,18 +930,18 @@ function rootConfigRow(onChanged) {
   action.onclick = (ev) => {
     ev.stopPropagation();
     const input = prompt(
-      `${location.origin} 对应的项目根目录（磁盘绝对路径）：`,
+      `Project root for ${location.origin} (absolute disk path):`,
       getConfiguredRoot() || "",
     );
     if (input === null) return;
     setProjectRoot(input.trim().replace(/\/+$/, ""));
-    onChanged(); // 就地重渲染，位置行会用新根重算一次
+    onChanged(); // Rerender in place so location rows use the new root.
   };
 
-  return row("项目根", value, action);
+  return row("Project root", value, action);
 }
 
-// 记住最后一次探测，配置变更（options 页改动、卡片上改）后能就地重渲染
+// Remember the last inspection so configuration changes can rerender the card in place.
 let lastCard = null;
 
 function showCard(dom, r) {
@@ -960,12 +958,12 @@ function showCard(dom, r) {
     height: `${rect.height}px`,
   });
 
-  // 头部：元素标签 + 关闭按钮
+  // Header: element tag + close button
   const head = document.createElement("div");
   Object.assign(head.style, {
     display: "flex",
     justifyContent: "space-between",
-    // 类名多时标题会换行，✕ 要留在第一行而不是垂直居中到中间
+    // With many class names the title wraps; keep ✕ on the first line rather than centered vertically.
     alignItems: "flex-start",
     gap: "12px",
     marginBottom: "6px",
@@ -973,7 +971,7 @@ function showCard(dom, r) {
     borderBottom: "1px solid #3a3a3a",
   });
   const title = document.createElement("span");
-  // SVG 元素的 className 是 SVGAnimatedString 不是字符串，得走 getAttribute
+  // SVG className is SVGAnimatedString, not a string, so use getAttribute.
   const rawClass = (
     typeof anchor.className === "string"
       ? anchor.className
@@ -984,7 +982,7 @@ function showCard(dom, r) {
   Object.assign(title.style, {
     color: "#e5c07b",
     fontWeight: "600",
-    // minWidth:0 是 flex 子项能换行的前提，否则长类名会把卡片撑过 maxWidth
+    // minWidth: 0 lets a flex item wrap; otherwise long class names exceed the card's maxWidth.
     flex: "1 1 auto",
     minWidth: "0",
     wordBreak: "break-all",
@@ -1012,7 +1010,7 @@ function showCard(dom, r) {
   } else {
     if (r.ancestorHops > 0) {
       const warn = document.createElement("div");
-      warn.textContent = `⚠ 该元素无 fiber，以下信息取自上 ${r.ancestorHops} 层祖先`;
+      warn.textContent = `⚠ This element has no Fiber; the following information comes from ancestor ${r.ancestorHops} level(s) up`;
       Object.assign(warn.style, { color: "#d29922", marginBottom: "4px" });
       card.append(warn);
     }
@@ -1020,33 +1018,33 @@ function showCard(dom, r) {
     const positions = collectPositions(r.fullChain, 2);
     if (!positions.length) {
       const none = document.createElement("div");
-      none.textContent = `⚠ 拿不到位置信息：${r.strategy}`;
+      none.textContent = `⚠ Location information is unavailable: ${r.strategy}`;
       none.style.color = "#d29922";
       card.append(none);
     } else {
-      const labels = ["当前元素", "父级"];
+      const labels = ["Current element", "Parent"];
       positions.forEach((entry, i) => {
         const link = document.createElement("span");
         fillPositionLink(link, entry);
         const who = document.createElement("span");
         who.textContent = describeNode(entry);
         Object.assign(who.style, { color: "#7d8590", flex: "0 0 auto" });
-        card.append(row(labels[i] ?? `上${i}层`, link, who));
+        card.append(row(labels[i] ?? `${i} level(s) up`, link, who));
       });
     }
 
     card.append(
       row(
-        "组件链",
+        "Component chain",
         (() => {
           const s = document.createElement("span");
-          // componentChain 原始顺序是由内到外。先截取最内 5 层（离点击元素最近、最相关），
-          // 再反转成由外到内显示，读起来像面包屑；被截断时前面补省略号。
+          // componentChain is innermost-first. Take the nearest five levels, then reverse them into
+          // outermost-first breadcrumbs; prefix an ellipsis when the chain is truncated.
           const innermost = r.componentChain.slice(0, 5);
           const shown = innermost.reverse().join(" → ");
           s.textContent = shown
             ? (r.componentChain.length > 5 ? "… → " : "") + shown
-            : "(无)";
+            : "(none)";
           s.style.color = "#d4d4d4";
           return s;
         })(),
@@ -1057,16 +1055,16 @@ function showCard(dom, r) {
         "React",
         (() => {
           const s = document.createElement("span");
-          s.textContent = `${r.reactVersion ?? "版本未知"} · ${r.route}`;
+          s.textContent = `${r.reactVersion ?? "version unknown"} · ${r.route}`;
           s.style.color = "#7d8590";
           return s;
         })(),
       ),
     );
 
-    // 编辑器对所有路径都要用，总是显示
+    // Every path can use the editor, so always show it.
     card.append(editorRow());
-    // 只有 debugStack 路径要靠项目根推路径，debugSource 路径不需要，不显示免得干扰
+    // Only debugStack needs a project root to infer paths; omit it for debugSource to avoid distraction.
     if (r.route === "debugStack") {
       card.append(rootConfigRow(() => showCard(dom, r)));
     }
@@ -1078,7 +1076,7 @@ function showCard(dom, r) {
 const isOwnUi = (el) =>
   el === overlay || el === label || el === pinBox || card.contains(el);
 
-/** 占满视口的层：全屏遮罩、portal 根、页面根容器。它们挡在前面但从来不是用户想定位的东西 */
+/** Full-viewport layers such as modals, portal roots, and page roots block clicks but are never the intended target. */
 function isFullscreenLayer(el) {
   const r = el.getBoundingClientRect();
   return (
@@ -1087,12 +1085,11 @@ function isFullscreenLayer(el) {
 }
 
 /**
- * 取事件真正该作用的元素。event.target 不够用的三种情况：
- *  1. 全屏遮罩 / portal 层盖在上面，target 是那层（无 fiber 时甚至是 <html>）；
- *  2. 遮罩本身是 React 渲染的（Chakra / Radix 都是），有 fiber，光看 target 会定位到遮罩；
- *  3. 页面自己的 mousedown 处理已经把 DOM 换掉（下拉 toggle、outside-click 关闭），
- *     到 click 阶段原元素已不在树上，target 回退成祖先。
- * 办法是按鼠标坐标取整条命中栈，挑第一个"带 fiber 且不占满视口"的元素。
+ * Find the element an event should truly target. event.target is insufficient when:
+ *  1. A fullscreen modal or portal layer covers the element, making target that layer or even <html>.
+ *  2. The modal is React-rendered (for example, Chakra or Radix), so target has Fiber but is still wrong.
+ *  3. A page mousedown handler replaced the DOM (dropdown toggle or outside-click close) before click fires.
+ * Use the full hit stack at the pointer coordinates and select the first element with Fiber that is not fullscreen.
  */
 function pickTarget(e) {
   const direct = e.target instanceof Element ? e.target : null;
@@ -1106,22 +1103,22 @@ function pickTarget(e) {
 
   const withFiber = stack.filter((el) => findFiber(el).fiber);
   if (!withFiber.length) return direct;
-  // 优先要具体元素；整条栈都是全屏层时（点在页面空白处）才退回最上层那个
+  // Prefer a specific element; fall back to the topmost only when every hit is fullscreen.
   return withFiber.find((el) => !isFullscreenLayer(el)) || withFiber[0];
 }
 
-// Alt + 鼠标操作是插件的专用手势，必须从 pointerdown 就整串吞掉。
-// 只在 click 里 preventDefault 太晚了 —— 页面的 mousedown 逻辑已经跑完并改了 DOM。
+// Alt + pointer input is an extension-only gesture, so consume the entire sequence from pointerdown.
+// Calling preventDefault only on click is too late because page mousedown handlers may have changed the DOM.
 let pendingTarget = null;
 for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
   document.addEventListener(
     type,
     (e) => {
       if (!e.altKey) return;
-      if (e.target instanceof Node && card.contains(e.target)) return; // 卡片自身的交互放行
+      if (e.target instanceof Node && card.contains(e.target)) return; // Allow interactions inside the card.
       e.preventDefault();
       e.stopPropagation();
-      // DOM 此刻还是完整的，先把目标记下来给随后的 click 用
+      // The DOM is still intact; save the target for the following click.
       if (type === "pointerdown" || type === "mousedown")
         pendingTarget = pickTarget(e);
     },
@@ -1141,7 +1138,7 @@ document.addEventListener(
 );
 
 document.addEventListener("keyup", (e) => {
-  if (e.key === "Alt") hideHint(); // 只收起 hover 提示，固定的卡片留着
+  if (e.key === "Alt") hideHint(); // Hide only the hover hint; keep pinned cards.
 });
 
 document.addEventListener("keydown", (e) => {
@@ -1154,30 +1151,30 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener(
   "click",
   (e) => {
-    // 卡片自己的点击（关闭按钮、位置链接、设置）由各自的 onclick 处理，不要在这里重新探测
+    // Card interactions (close button, location links, settings) use their own onclick handlers.
     if (e.target instanceof Node && card.contains(e.target)) return;
 
     if (!e.altKey) {
-      // 点卡片外面就关掉。不 preventDefault —— 页面自己的点击逻辑照常走
+      // Close on an outside click without preventing the page's normal click behavior.
       if (card.style.display !== "none") closeCard();
       return;
     }
     e.preventDefault();
     e.stopPropagation();
 
-    // 优先用 pointerdown 时记下的目标：那时页面还没来得及改 DOM
+    // Prefer the target captured at pointerdown before the page could change the DOM.
     const target = pendingTarget || pickTarget(e);
     pendingTarget = null;
     const r = probe(target);
     console.group(
-      "%c[source-inspect] 探测结果",
+      "%c[source-inspect] Inspection result",
       "color:#4f9cff;font-weight:bold",
     );
-    console.log("目标 DOM:", target);
+    console.log("Target DOM:", target);
     if (target !== e.target) {
       console.log(
-        `%c↑ event.target 原本是 <${e.target instanceof Element ? e.target.tagName.toLowerCase() : e.target}>，` +
-          "被遮罩层或 DOM 变动干扰，已按鼠标坐标纠正",
+        `%c↑ event.target was <${e.target instanceof Element ? e.target.tagName.toLowerCase() : e.target}>; ` +
+          "it was affected by a modal layer or DOM change and corrected using pointer coordinates",
         "color:#d29922",
       );
     }
@@ -1185,25 +1182,25 @@ document.addEventListener(
       console.warn(r.reason);
     } else {
       console.log(
-        "React 版本:",
-        r.reactVersion ?? "(检测不到，装 React DevTools 后可读到)",
+        "React version:",
+        r.reactVersion ?? "(unavailable; install React DevTools)",
       );
-      console.log("fiber 挂载 key:", r.fiberKey);
-      console.log("%c走的路径: " + r.strategy, "color:#e5c07b");
+      console.log("Fiber attachment key:", r.fiberKey);
+      console.log("%cResolution path: " + r.strategy, "color:#e5c07b");
       if (r.ancestorHops > 0)
         console.warn(
-          `点击目标本身无 fiber，结果取自上 ${r.ancestorHops} 层祖先:`,
+          `The clicked target has no Fiber; using ancestor ${r.ancestorHops} level(s) up:`,
           r.ancestorNode,
         );
-      console.log("定位目标:", r.target ?? "(无)");
-      console.log("归属组件:", r.owner ?? "(无)");
-      console.log("组件链 (由内到外):", r.componentChain);
-      console.log("该节点 props:", r.props);
-      console.log("完整 fiber 链原始数据:", r.fullChain);
+      console.log("Resolved target:", r.target ?? "(none)");
+      console.log("Owner component:", r.owner ?? "(none)");
+      console.log("Component chain (inner to outer):", r.componentChain);
+      console.log("Node props:", r.props);
+      console.log("Full raw Fiber chain:", r.fullChain);
     }
     console.groupEnd();
 
-    // 点击不再直接跳编辑器 —— 固定下来出卡片，由卡片上的位置链接决定跳哪一层
+    // Do not open the editor directly. Pin a card and let its location links choose the target level.
     hideHint();
     showCard(target, r);
   },
@@ -1211,6 +1208,6 @@ document.addEventListener(
 );
 
 console.log(
-  "%c[source-inspect] 探针已注入。Alt+移动鼠标 查看，Alt+点击 固定卡片，点卡片上的蓝色位置跳编辑器，Esc 关闭。",
+  "%c[source-inspect] Probe injected. Alt+move to inspect, Alt+click to pin a card, click a blue location to open the editor, Esc to close.",
   "color:#4f9cff",
 );

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Source Inspect (probe)",
   "version": "0.0.1",
-  "description": "Alt+点击页面元素，经 sourcemap 还原源码位置并跳转编辑器",
+  "description": "Alt-click a page element to map it to source code with source maps and open it in your editor",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

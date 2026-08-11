@@ -1,5 +1,5 @@
-// 选项页。存储结构和 bridge.js 约定一致：{ editor: string, roots: { [origin]: absPath } }
-// 用 storage.local 而不是 sync —— 配的是磁盘绝对路径，跨设备同步只会带来错的路径。
+// Options page. Storage follows bridge.js: { editor: string, roots: { [origin]: absPath } }
+// Use storage.local rather than sync because absolute disk paths are device-specific.
 
 const EDITORS = [
   { id: 'vscode', label: 'VS Code' },
@@ -15,7 +15,7 @@ function flashSaved() {
   setTimeout(() => savedTip.classList.remove('show'), 1200);
 }
 
-/** origin 必须是 scheme + host(+port)，多余的 path/query 会让匹配永远失败，所以规范化后再存 */
+/** An origin must be scheme + host (+port); normalize it so a path or query cannot prevent matching. */
 function normalizeOrigin(input) {
   const raw = input.trim();
   if (!raw) return null;
@@ -53,7 +53,7 @@ function renderRoots(roots) {
     tdOrigin.className = 'path';
     tdOrigin.textContent = origin;
 
-    // 路径做成可编辑输入框，改完失焦即存 —— 比"编辑/保存"两步顺手
+    // Make the path directly editable and save on blur instead of requiring edit/save steps.
     const tdRoot = document.createElement('td');
     const input = document.createElement('input');
     input.type = 'text';
@@ -63,7 +63,7 @@ function renderRoots(roots) {
       const next = normalizeRoot(input.value);
       const { roots: current = {} } = await chrome.storage.local.get({ roots: {} });
       if (next) current[origin] = next;
-      else delete current[origin]; // 清空输入等于删掉这条
+      else delete current[origin]; // Clearing the input removes this entry.
       await chrome.storage.local.set({ roots: current });
       flashSaved();
       if (!next) load();
@@ -74,7 +74,7 @@ function renderRoots(roots) {
     tdActions.className = 'actions';
     const del = document.createElement('button');
     del.className = 'link-danger';
-    del.textContent = '删除';
+    del.textContent = 'Delete';
     del.onclick = async () => {
       const { roots: current = {} } = await chrome.storage.local.get({ roots: {} });
       delete current[origin];
@@ -105,11 +105,11 @@ $('add').onclick = async () => {
   const root = normalizeRoot($('new-root').value);
   if (!origin) {
     $('new-origin').focus();
-    return void alert('站点 origin 填得不对，形如 http://localhost:3000');
+    return void alert('Enter a valid site origin, for example http://localhost:3000');
   }
   if (!root.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(root)) {
     $('new-root').focus();
-    return void alert('项目根要填磁盘绝对路径，形如 /Users/你/项目目录');
+    return void alert('Enter an absolute disk path for the project root, for example /Users/you/project');
   }
   const { roots = {} } = await chrome.storage.local.get({ roots: {} });
   roots[origin] = root;
@@ -120,7 +120,7 @@ $('add').onclick = async () => {
   load();
 };
 
-// 页面卡片上改了配置，选项页开着的话同步刷新
+// Refresh this page when configuration changes from an in-page card.
 chrome.storage.onChanged.addListener((_changes, area) => {
   if (area === 'local') load();
 });
