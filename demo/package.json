@@ -18,8 +18,5 @@
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.9.0",
     "vite": "^7.1.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }
