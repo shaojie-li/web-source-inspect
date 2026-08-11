@@ -1,4 +1,4 @@
-// 浮层定位的边界几何验证。逻辑与 content.js 的 computePlacement 保持一致（改一边要同步另一边）。
+// Boundary geometry checks for overlay placement. Keep this in sync with content.js computePlacement.
 const M = 8;
 
 function computePlacement({ w, h, rect, vw, vh, prefer = 'above', margin = M }) {
@@ -33,8 +33,8 @@ const box = (left, top, width, height) => ({ left, top, right: left + width, bot
 
 const VW = 1280;
 const VH = 800;
-const W = 320; // 浮层宽
-const H = 90; // 浮层高
+const W = 320; // overlay width
+const H = 90; // overlay height
 
 function noOverlap({ left, top }, rect) {
   return !(left < rect.right && left + W > rect.left && top < rect.bottom && top + H > rect.top);
@@ -45,42 +45,42 @@ function fitsViewport({ left, top }) {
 
 const cases = [
   {
-    name: '右上角的图标（就是截图里那个齿轮）：不能把 left 顶到视口外，否则浮层被压成竖排窄条',
+    name: 'a top-right icon keeps the overlay within the viewport instead of collapsing into a narrow column',
     rect: box(1240, 20, 32, 32),
     assert: (p) => fitsViewport(p) && noOverlap(p, box(1240, 20, 32, 32)) && p.left + W <= VW - M,
   },
   {
-    name: '左上角元素：上方放不下就翻到下方，不能盖住元素',
+    name: 'a top-left element uses the space below when there is no room above',
     rect: box(16, 10, 120, 30),
     assert: (p) => fitsViewport(p) && noOverlap(p, box(16, 10, 120, 30)) && p.top >= 40,
   },
   {
-    name: '底部元素：下方放不下就翻到上方',
+    name: 'a bottom element uses the space above when there is no room below',
     rect: box(400, 770, 200, 25),
     assert: (p) => fitsViewport(p) && noOverlap(p, box(400, 770, 200, 25)) && p.top + H <= 770,
   },
   {
-    name: '左下角元素：上下都紧张时仍要既不遮挡又不出界',
+    name: 'a bottom-left element stays visible without overlap when vertical space is constrained',
     rect: box(4, 760, 60, 36),
     assert: (p) => fitsViewport(p) && noOverlap(p, box(4, 760, 60, 36)),
   },
   {
-    name: '竖向长条（侧边栏）：上下都放不下，应该走左右两侧',
+    name: 'a vertical sidebar uses either horizontal side when neither vertical side fits',
     rect: box(0, 0, 200, 800),
     assert: (p) => fitsViewport(p) && noOverlap(p, box(0, 0, 200, 800)) && p.left >= 200,
   },
   {
-    name: '横向长条（顶栏）：左右放不下，应该走下方',
+    name: 'a horizontal header uses the space below when neither horizontal side fits',
     rect: box(0, 0, 1280, 60),
     assert: (p) => fitsViewport(p) && noOverlap(p, box(0, 0, 1280, 60)) && p.top >= 60,
   },
   {
-    name: '元素占满整个视口：无处可躲，退让为"至少浮层完整可见"',
+    name: 'a full-viewport element falls back to keeping the entire overlay visible',
     rect: box(0, 0, 1280, 800),
     assert: (p) => fitsViewport(p),
   },
   {
-    name: 'prefer=below（卡片）在空间充足时确实走下方，不挡住元素',
+    name: 'prefer=below places the overlay below a card when space is available',
     rect: box(300, 300, 100, 40),
     prefer: 'below',
     assert: (p) => fitsViewport(p) && noOverlap(p, box(300, 300, 100, 40)) && p.top >= 340,
@@ -93,7 +93,7 @@ for (const c of cases) {
   const ok = c.assert(p);
   if (ok) pass++;
   console.log(`${ok ? '✓' : '✗'} ${c.name}`);
-  if (!ok) console.log(`    得到 left=${p.left} top=${p.top}（浮层 ${W}x${H}，视口 ${VW}x${VH}）`);
+  if (!ok) console.log(`    got left=${p.left} top=${p.top} (overlay ${W}x${H}, viewport ${VW}x${VH})`);
 }
-console.log(`\n${pass}/${cases.length} 通过`);
+console.log(`\n${pass}/${cases.length} passed`);
 process.exit(pass === cases.length ? 0 : 1);

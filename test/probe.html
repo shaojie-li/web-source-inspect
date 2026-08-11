@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>React fiber 源码信息探测</title>
+    <title>React Fiber source information probe</title>
     <style>
       body { font: 13px/1.6 ui-monospace, monospace; padding: 16px; }
       pre { background: #f4f4f4; padding: 12px; overflow: auto; }
@@ -12,10 +12,10 @@
   <body>
     <h2 id="ver">loading…</h2>
     <div id="root"></div>
-    <pre id="out">探测中…</pre>
+    <pre id="out">Probing…</pre>
 
     <script type="module">
-      // 用 ?v=18 / ?v=19 切换 React 版本。React 19 不再发 UMD build，所以走 ESM CDN。
+      // Use ?v=18 or ?v=19 to switch React versions. React 19 has no UMD build, so this uses an ESM CDN.
       const v = new URLSearchParams(location.search).get('v') || '19';
 
       const [{ jsxDEV }, ReactDOM, React] = await Promise.all([
@@ -26,8 +26,8 @@
 
       document.getElementById('ver').textContent = `React ${React.version}`;
 
-      // 手写 jsxDEV 调用，第 5 个参数就是 babel-plugin-transform-react-jsx-source 会注入的 source 对象。
-      // 这样绕过整条构建链，直接验证 React runtime 本身是否把它存到 fiber 上。
+      // The fifth jsxDEV argument is the source object injected by babel-plugin-transform-react-jsx-source.
+      // This bypasses the build chain to verify whether React itself stores it on the Fiber.
       const src = (line, column) => ({ fileName: '/src/Card.jsx', lineNumber: line, columnNumber: column });
 
       function Card({ label }) {
@@ -47,7 +47,7 @@
       function App() {
         return jsxDEV(
           'div',
-          { children: jsxDEV(Card, { label: '点我' }, undefined, false, src(7, 7), this) },
+          { children: jsxDEV(Card, { label: 'Click me' }, undefined, false, src(7, 7), this) },
           undefined,
           false,
           src(6, 5),
@@ -59,17 +59,17 @@
         jsxDEV(App, {}, undefined, false, src(1, 1), undefined),
       );
 
-      // ---- 探测 ----
+      // ---- Probe ----
       setTimeout(() => {
         const dom = document.querySelector('#probe-btn');
         const out = document.getElementById('out');
-        if (!dom) return void (out.textContent = '✗ 没渲染出来');
+        if (!dom) return void (out.textContent = '✗ Not rendered');
 
         let fiberKey = null;
         for (const k in dom) {
           if (k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')) fiberKey = k;
         }
-        if (!fiberKey) return void (out.textContent = '✗ DOM 节点上找不到 fiber');
+        if (!fiberKey) return void (out.textContent = '✗ No Fiber found on the DOM node');
 
         const typeName = (t) =>
           !t ? null : typeof t === 'string' ? t : typeof t === 'function' ? t.name || '(anon)' : 'obj';
@@ -94,9 +94,9 @@
 
         const hit = chain.find((n) => n._debugSource);
         out.textContent =
-          `React 版本: ${React.version}\n` +
+          `React version: ${React.version}\n` +
           `fiber key: ${fiberKey}\n` +
-          `结论: ${hit ? '✓ _debugSource 可用 → ' + hit._debugSource : '✗ _debugSource 全链路缺失'}\n\n` +
+          `Result: ${hit ? '✓ _debugSource is available → ' + hit._debugSource : '✗ _debugSource is absent throughout the Fiber chain'}\n\n` +
           JSON.stringify(chain, null, 2);
       }, 300);
     </script>
