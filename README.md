@@ -149,4 +149,4 @@ This is an early-stage prototype. When reporting an issue, include the React ver
 
 ## License
 
-No license has been selected yet. Do not redistribute or reuse the project beyond applicable law until a license is added.
+Licensed under the [Apache License 2.0](LICENSE).
