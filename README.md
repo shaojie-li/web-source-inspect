@@ -1,16 +1,16 @@
-# Source Inspect
+# React Trace
 
 An experimental, zero-integration Chrome extension that maps an element in a React development page back to the JSX/TSX source that created it, then opens that location in VS Code or Cursor.
 
-![Source Inspect demo](demo.gif)
+![React Trace demo](demo.gif)
 
-> **No project-code changes required.** Load the extension in Chrome; do not add a package, a Babel/Vite plugin, or application instrumentation. Source Inspect reads the React runtime and source maps already available in your development page.
+> **No project-code changes required.** Load the extension in Chrome; do not add a package, a Babel/Vite plugin, or application instrumentation. React Trace reads the React runtime and source maps already available in your development page.
 
-> **Experimental.** Source Inspect relies on React development-only internals and accessible source maps. It is intended for local development, not production pages.
+> **Experimental.** React Trace relies on React development-only internals and accessible source maps. It is intended for local development, not production pages.
 
 ## Why
 
-When inspecting a React UI, browser DevTools can show the DOM and styles but not always the source line that created an element. Source Inspect shortens that loop without modifying the project being inspected:
+When inspecting a React UI, browser DevTools can show the DOM and styles but not always the source line that created an element. React Trace shortens that loop without modifying the project being inspected:
 
 1. Hold `Alt` and point at an element.
 2. See its source location and React component chain.
@@ -48,7 +48,7 @@ Open [http://localhost:5173](http://localhost:5173). The demo is only for verifi
 
 ### 3. Configure the project root
 
-For React 19, Source Inspect may need an absolute project root to turn a source-map path into a local file path. Click **Settings** in the result card, or open the extension options page, and map the page origin to the project directory:
+For React 19, React Trace may need an absolute project root to turn a source-map path into a local file path. Click **Settings** in the result card, or open the extension options page, and map the page origin to the project directory:
 
 ```text
 http://localhost:5173 -> /absolute/path/to/source-inspect/demo
@@ -58,12 +58,12 @@ The setting is stored locally in Chrome. If the isolated-world bridge is unavail
 
 ## Usage
 
-| Gesture | Result |
-| --- | --- |
-| Hold `Alt` and move the pointer | Shows a blue outline and a live source-location hint. |
-| `Alt + click` an element | Pins an orange outline and opens a result card. |
-| Click a blue location in the card | Opens the file, line, and column in the selected editor. |
-| Press `Esc`, click `×`, or click outside the card | Closes the pinned result. |
+| Gesture                                           | Result                                                   |
+| ------------------------------------------------- | -------------------------------------------------------- |
+| Hold `Alt` and move the pointer                   | Shows a blue outline and a live source-location hint.    |
+| `Alt + click` an element                          | Pins an orange outline and opens a result card.          |
+| Click a blue location in the card                 | Opens the file, line, and column in the selected editor. |
+| Press `Esc`, click `×`, or click outside the card | Closes the pinned result.                                |
 
 The result card can show two different but useful concepts:
 
@@ -85,32 +85,32 @@ The demo exercises the cases that are easiest to get wrong:
 
 ## Supported environments and limitations
 
-| Area | Current behavior |
-| --- | --- |
-| Browser | Chrome 111+; the extension uses Manifest V3 `world: "MAIN"`. |
-| Hosts | `http://localhost/*` and `http://127.0.0.1/*` only. HTTPS localhost, LAN IPs, and custom hosts are not injected. |
-| React | React development builds only. React 18.3.1 and 19.2.8 were verified. |
-| Production builds | Unsupported: React's debug source data is not available. |
-| Source maps | Required for the React 19 path; the served module and its map must be fetchable from the page. |
-| Editors | VS Code and Cursor. Other editors can be added to the `EDITORS` list in `content.js`. |
-| Caching | Parsed source maps are cached in memory without a size cap. HMR query strings can create duplicate cache entries. |
+| Area              | Current behavior                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Browser           | Chrome 111+; the extension uses Manifest V3 `world: "MAIN"`.                                                      |
+| Hosts             | `http://localhost/*` and `http://127.0.0.1/*` only. HTTPS localhost, LAN IPs, and custom hosts are not injected.  |
+| React             | React development builds only. React 18.3.1 and 19.2.8 were verified.                                             |
+| Production builds | Unsupported: React's debug source data is not available.                                                          |
+| Source maps       | Required for the React 19 path; the served module and its map must be fetchable from the page.                    |
+| Editors           | VS Code and Cursor. Other editors can be added to the `EDITORS` list in `content.js`.                             |
+| Caching           | Parsed source maps are cached in memory without a size cap. HMR query strings can create duplicate cache entries. |
 
 ## How it works
 
-Source Inspect uses a small two-script architecture because React Fiber expandos are visible only from the page's main world, while `chrome.storage` is available only from the extension's isolated world.
+React Trace uses a small two-script architecture because React Fiber expandos are visible only from the page's main world, while `chrome.storage` is available only from the extension's isolated world.
 
-| File | Context | Responsibility |
-| --- | --- | --- |
-| `content.js` | Main world | Reads React Fiber data, resolves source maps, renders the overlay/card, and opens editors. |
-| `bridge.js` | Isolated world | Proxies configuration reads and writes through `chrome.storage.local`. |
-| `options.html` / `options.js` | Extension page | Manages the editor choice and origin-to-project-root mappings. |
+| File                          | Context        | Responsibility                                                                             |
+| ----------------------------- | -------------- | ------------------------------------------------------------------------------------------ |
+| `content.js`                  | Main world     | Reads React Fiber data, resolves source maps, renders the overlay/card, and opens editors. |
+| `bridge.js`                   | Isolated world | Proxies configuration reads and writes through `chrome.storage.local`.                     |
+| `options.html` / `options.js` | Extension page | Manages the editor choice and origin-to-project-root mappings.                             |
 
 ### React 18 and React 19
 
-| React runtime | Signal | Resolution |
-| --- | --- | --- |
-| React 18 | `fiber._debugSource` | Already contains a source file, line, and column. |
-| React 19 | `fiber._debugStack` | Provides a generated JSX call site; Source Inspect parses the source map to recover the original source location. |
+| React runtime | Signal               | Resolution                                                                                                     |
+| ------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| React 18      | `fiber._debugSource` | Already contains a source file, line, and column.                                                              |
+| React 19      | `fiber._debugStack`  | Provides a generated JSX call site; React Trace parses the source map to recover the original source location. |
 
 For path inference, the extension prefers explicit paths over guesses: Vite `/@fs/` URLs, compiler-injected `fileName` values, absolute `sources`, `sourceRoot`, then a configured project root combined with the module URL or normalized `sources` path. If it cannot infer a safe absolute path, it reports the failure instead of opening a guessed file.
 

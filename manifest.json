@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Source Inspect (probe)",
+  "name": "React Trace",
   "version": "0.0.1",
   "description": "Alt-click a page element to map it to source code with source maps and open it in your editor",
   "icons": {

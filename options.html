@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Source Inspect Settings</title>
+    <title>React Trace Settings</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -28,14 +28,31 @@
       body {
         margin: 0;
         padding: 32px 24px;
-        font: 14px/1.7 system-ui, -apple-system, 'PingFang SC', sans-serif;
+        font:
+          14px/1.7 system-ui,
+          -apple-system,
+          "PingFang SC",
+          sans-serif;
         color: var(--fg);
         background: var(--bg);
       }
-      main { max-width: 760px; margin: 0 auto; }
-      h1 { font-size: 20px; margin: 0 0 4px; }
-      h2 { font-size: 15px; margin: 32px 0 8px; }
-      p.hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 32px 0 8px;
+      }
+      p.hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 16px;
+      }
       code {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 12px;
@@ -43,7 +60,8 @@
         padding: 1px 5px;
         border-radius: 4px;
       }
-      select, input[type='text'] {
+      select,
+      input[type="text"] {
         font: inherit;
         font-size: 13px;
         padding: 6px 10px;
@@ -53,7 +71,9 @@
         border-radius: 6px;
         box-sizing: border-box;
       }
-      input[type='text'] { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      input[type="text"] {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
       button {
         font: inherit;
         font-size: 13px;
@@ -64,28 +84,61 @@
         border-radius: 6px;
         cursor: pointer;
       }
-      button:hover { border-color: var(--link); color: var(--link); }
+      button:hover {
+        border-color: var(--link);
+        color: var(--link);
+      }
       button.link-danger {
         border: none;
         background: none;
         color: var(--danger);
         padding: 2px 6px;
       }
-      button.link-danger:hover { text-decoration: underline; color: var(--danger); }
-      table { width: 100%; border-collapse: collapse; }
-      th, td {
+      button.link-danger:hover {
+        text-decoration: underline;
+        color: var(--danger);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
         text-align: left;
         padding: 8px 10px 8px 0;
         border-bottom: 1px solid var(--border);
         vertical-align: middle;
       }
-      th { font-size: 12px; color: var(--muted); font-weight: 500; }
-      td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
-      td.actions { text-align: right; white-space: nowrap; }
-      .add-row { display: flex; gap: 8px; margin-top: 12px; }
-      .add-row input:nth-child(1) { flex: 0 0 240px; }
-      .add-row input:nth-child(2) { flex: 1 1 auto; }
-      .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+      th {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      td.path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        word-break: break-all;
+      }
+      td.actions {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .add-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .add-row input:nth-child(1) {
+        flex: 0 0 240px;
+      }
+      .add-row input:nth-child(2) {
+        flex: 1 1 auto;
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 12px 0;
+      }
       #saved {
         color: #1a7f37;
         font-size: 13px;
@@ -93,24 +146,39 @@
         opacity: 0;
         transition: opacity 0.2s;
       }
-      #saved.show { opacity: 1; }
-      @media (prefers-color-scheme: dark) { #saved { color: #3fb950; } }
+      #saved.show {
+        opacity: 1;
+      }
+      @media (prefers-color-scheme: dark) {
+        #saved {
+          color: #3fb950;
+        }
+      }
     </style>
   </head>
   <body>
     <main>
-      <h1>Source Inspect Settings</h1>
-      <p class="hint">Hold Alt while moving the pointer on a localhost page to inspect an element. Alt+click pins the card; click a blue location to open it in your editor.</p>
+      <h1>React Trace Settings</h1>
+      <p class="hint">
+        Hold Alt while moving the pointer on a localhost page to inspect an
+        element. Alt+click pins the card; click a blue location to open it in
+        your editor.
+      </p>
 
       <h2>Editor<span id="saved">Saved</span></h2>
-      <p class="hint">Choose the editor used for location links. It uses the editor's built-in URL scheme, so no editor extension is needed.</p>
+      <p class="hint">
+        Choose the editor used for location links. It uses the editor's built-in
+        URL scheme, so no editor extension is needed.
+      </p>
       <select id="editor"></select>
 
       <h2>Project Root</h2>
       <p class="hint">
-        Source maps provide lines, columns, and file names but not disk paths, so configure a project root per site.
-        Most paths can be inferred automatically from a <code>fileName</code> literal or absolute <code>sources</code> entry.
-        Configure a root here only when inference fails; you can also select Settings from an in-page card.
+        Source maps provide lines, columns, and file names but not disk paths,
+        so configure a project root per site. Most paths can be inferred
+        automatically from a <code>fileName</code> literal or absolute
+        <code>sources</code> entry. Configure a root here only when inference
+        fails; you can also select Settings from an in-page card.
       </p>
       <table>
         <thead>
@@ -124,7 +192,11 @@
       </table>
       <div class="empty" id="empty" hidden>No sites have been configured.</div>
       <div class="add-row">
-        <input type="text" id="new-origin" placeholder="http://localhost:3000" />
+        <input
+          type="text"
+          id="new-origin"
+          placeholder="http://localhost:3000"
+        />
         <input type="text" id="new-root" placeholder="/Users/you/project" />
         <button id="add">Add</button>
       </div>
